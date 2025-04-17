@@ -97,10 +97,10 @@ jobs:
           message: |
             🖼 **以下のPNG画像が更新されました:**
             
-            ${{ steps.diff.outputs.CHANGED }}
+            ${{ steps.detect_changes.outputs.CHANGED }}
             
             {% raw %}
-            {% for file in steps.diff.outputs.CHANGED.split(',') %}
+            {% for file in steps.detect_changes.outputs.CHANGED.split(',') %}
             ### `{{ file | split('/')[-1] }}`
             - [Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/before/{{ file | split('/')[-1] }})
             - [After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/after/{{ file | split('/')[-1] }})
