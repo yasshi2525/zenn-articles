@@ -68,16 +68,19 @@ jobs:
         run: |
           mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before
           
-          {% for file in steps.diff.outputs.CHANGED.split(',') %}
-            echo "Downloading... {{ file | split('/')[-1] }}"
-            curl -f -s -o gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/{{ file | split('/')[-1] }} \
-              https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/{{ file | split('/')[-1] }} || echo "No previous image for {{ file | split('/')[-1] }}"
-          {% endfor %}
+          while IFS= read -r file; do
+            relative_path="${file#imges/genetated/}"
+            echo "Downloading... $relative_path"
+          mkdir -p $(dirname "$relative_path")
+          curl -f -s -o "gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/$relative_path" \
+              "https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/$relative_path" \
+            || echo "No previous image for $relative_path"
+          done < changed_files.txt
 
       - name: Copy current (after) images
         run: |
           mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after
-          cp images/generated/*.png gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/
+          cp -r images/generated gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
