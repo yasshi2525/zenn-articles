@@ -66,11 +66,12 @@ jobs:
       - name: Download (before) images of main branch
         run: |
           mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before
-          for f in $(ls plantuml/generated/*.puml); do
-            name=$(basename $f .puml)
-            curl -f -s -o gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/$name.png \
-              https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/$name.png || echo "No previous image for $name"
-          done
+          
+          {% for file in steps.diff.outputs.CHANGED.split(',') %}
+            echo "Downloading... {{ file | split('/')[-1] }}"
+            curl -f -s -o gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/{{ file | split('/')[-1] }} \
+              https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/{{ file | split('/')[-1] }} || echo "No previous image for {{ file | split('/')[-1] }}"
+          {% endfor}
 
       - name: Copy current (after) images
         run: |
