@@ -79,7 +79,7 @@ jobs:
               && before_status_list+=("true") \
             || \
               echo "No previous image for $relative_path" \
-              && before_status_list+=("false") \
+              && before_status_list+=("false")
           done < changed_files.txt
           echo "BEFORE_STATUS_LIST=$(echo ${before_status_list[@]} | paste -sd ',')" >> $GITHUB_OUTPUT
 
