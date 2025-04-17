@@ -90,22 +90,32 @@ jobs:
           publish_dir: ./gh-pages
           keep_files: true
 
+      - name: Generate image diff comment
+        id: comment
+        if: steps.detect_changes.outputs.CHANGED != ''
+        run: |
+          PR=${{ github.event.pull_request.number }}
+          FILES="${{ steps.detect_changes.outputs.files }}"
+          
+          echo "COMMENT<<EOF" >> $GITHUB_OUTPUT
+          echo "🖼 **画像の差分を検出しました**" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          
+          IFS=',' read -ra LIST <<< "$FILES"
+          for f in "${LIST[@]}"; do
+            relative_path="${f#images/generated/}"
+            echo "### \`${relative_path}\`" >> $GITHUB_OUTPUT
+            echo "- [Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${PR}/before/${relative_path})" >> $GITHUB_OUTPUT
+            echo "- [After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${PR}/after/${relative_path})" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+          done
+          
+          echo "PR #${{ github.event.pull_request.number }} によって自動生成されました。" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Post comment to PR
         if: steps.detect_changes.outputs.CHANGED != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          message: |
-            🖼 **以下のPNG画像が更新されました:**
-            
-            ${{ steps.detect_changes.outputs.CHANGED }}
-            
-            {% raw %}
-            {% for file in steps.detect_changes.outputs.CHANGED.split(',') %}
-            ### `{{ file | split('/')[-1] }}`
-            - [Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/before/{{ file | split('/')[-1] }})
-            - [After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/after/{{ file | split('/')[-1] }})
-      
-            {% endfor %}
-            {% endraw %}
-            
-            📝 PR #${{ github.event.pull_request.number }} によって自動生成されました。
+          header: image-diff
+          message: "${{ steps.comment.outputs.COMMENT }}"
