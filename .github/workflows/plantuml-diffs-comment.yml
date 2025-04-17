@@ -41,7 +41,7 @@ jobs:
         id: detect_changes
         run: |
           git add -f images/generated/*.png
-          git diff --name-only origin/main HEAD -- images/generated/*.png > changed_files.txt
+          git diff --cached --name-only origin/main -- images/generated/*.png > changed_files.txt
           cat changed_files.txt
           echo "CHANGED=$(cat changed_files.txt | paste -sd ',')" >> $GITHUB_OUTPUT
 
