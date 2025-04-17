@@ -80,7 +80,7 @@ jobs:
       - name: Copy current (after) images
         run: |
           mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after
-          cp -r images/generated gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/
+          cp -r images/generated/ gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
