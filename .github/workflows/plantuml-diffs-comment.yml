@@ -65,22 +65,44 @@ jobs:
           echo "PR_NUM=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
 
       - name: Download (before) images of main branch
+        id: download_before
         run: |
           mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before
+          before_status_list=()
           
           while IFS= read -r file; do
             relative_path="${file#images/generated/}"
             echo "Downloading... $relative_path"
-          mkdir -p $(dirname "$relative_path")
-          curl -f -s -o "gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/$relative_path" \
-              "https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/$relative_path" \
-            || echo "No previous image for $relative_path"
+            mkdir -p $(dirname "$relative_path")
+            ( \
+              curl -f -s -o "gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/$relative_path" \
+                "https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/$relative_path" \
+              && before_status_list+=("true") \
+            ) \
+            || \
+            ( \
+              echo "No previous image for $relative_path" \
+              && before_status_list+=("false") \
+            )
           done < changed_files.txt
+          echo "BEFORE_STATUS_LIST=$(echo ${before_status_list[@]} | paste -sd ',')" >> $GITHUB_OUTPUT
 
       - name: Copy current (after) images
+        id: upload_after
         run: |
           mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after
           cp -r images/generated/ gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/
+          
+          after_status_list=()
+          while IFS= read -r file; do
+            relative_path="${file#images/generated/}"
+            if [ -f "gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/$relative_path" ]; then
+              after_status_list+=("true")
+            else
+              after_status_list+=("false")
+            fi
+          done < changed_files.txt
+          echo "AFTER_STATUS_LIST=$(echo ${after_status_list[@]} | paste -sd ',')" >> $GITHUB_OUTPUT
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
@@ -94,19 +116,42 @@ jobs:
         id: comment
         if: steps.detect_changes.outputs.CHANGED != ''
         run: |
-          PR=${{ github.event.pull_request.number }}
-          FILES="${{ steps.detect_changes.outputs.CHANGED }}"
+          IFS=',' read -ra before_status_list <<< "${{ steps.download_before.outputs.BEFORE_STATUS_LIST }}"
+          IFS=',' read -ra after_status_list <<< "${{ steps.upload_after.outputs.AFTER_STATUS_LIST }}"
           
           echo "COMMENT<<EOF" >> $GITHUB_OUTPUT
           echo "🖼 **画像の差分を検出しました**" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
           
-          IFS=',' read -ra LIST <<< "$FILES"
-          for f in "${LIST[@]}"; do
-            relative_path="${f#images/generated/}"
-            echo "### \`${relative_path}\`" >> $GITHUB_OUTPUT
-            echo "- [Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${PR}/before/${relative_path})" >> $GITHUB_OUTPUT
-            echo "- [After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${PR}/after/${relative_path})" >> $GITHUB_OUTPUT
+          IFS=',' read -ra list <<< "${{ steps.detect_changes.outputs.CHANGED }}"
+          for ((i=0; i<${#list[@]}; i++)); do
+            relative_path="${list[$i]#images/generated/}"
+            file_status=""
+            status_icon=""
+            table_body=""
+            before_sentence="[Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ steps.pr.outputs.PR_NUM }}/before/${relative_path})"
+            after_sentence="[After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ steps.pr.outputs.PR_NUM }}/after/${relative_path})"
+          
+            if [[ "${before_status_list[$i]}" == "false" && "${after_status_list[$i]" == "true" ]]; then
+              file_status="created"
+              status_icon="✅"
+              table_body="| 🆕 | ➡ | ${after_sentence} |"
+            fi
+            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]" == "true" ]]; then
+              file_status="updated"
+              status_icon="🔄"
+              table_body="| ${before_sentence} | ➡ | ${after_sentence} |"
+            fi
+            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]" == "false" ]]; then
+              file_status="removed"
+              status_icon="🗑️"
+              table_body="| ${before_sentence} | ➡ | 🗑 |"
+            fi
+            echo "### ${status_icon} \`${relative_path}\`" >> $GITHUB_OUTPUT
+            echo "| Before | ➡ | After |" >> $GITHUB_OUTPUT
+            echo "|--------|--------|--------|" >> $GITHUB_OUTPUT
+            echo "${table_body}" >> $GITHUB_OUTPUT
+            
             echo "" >> $GITHUB_OUTPUT
           done
           
