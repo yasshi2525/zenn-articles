@@ -95,7 +95,7 @@ jobs:
         if: steps.detect_changes.outputs.CHANGED != ''
         run: |
           PR=${{ github.event.pull_request.number }}
-          FILES="${{ steps.detect_changes.outputs.files }}"
+          FILES="${{ steps.detect_changes.outputs.CHANGED }}"
           
           echo "COMMENT<<EOF" >> $GITHUB_OUTPUT
           echo "🖼 **画像の差分を検出しました**" >> $GITHUB_OUTPUT
