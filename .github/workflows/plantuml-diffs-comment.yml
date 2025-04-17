@@ -95,8 +95,7 @@ jobs:
           
           after_status_list=()
           while IFS= read -r file; do
-            relative_path="${file#images/generated/}"
-            if [ -f "gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/$relative_path" ]; then
+            if [ -f "$file" ]; then
               after_status_list+=("true")
             else
               after_status_list+=("false")
