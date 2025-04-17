@@ -46,14 +46,14 @@ jobs:
           echo "CHANGED=$(cat changed_files.txt | paste -sd ',')" >> $GITHUB_OUTPUT
 
       - name: Add "has-image-change" label if diff exists
-        if: steps.diff.outputs.CHANGED != ''
+        if: steps.detect_changes.outputs.CHANGED != ''
         uses: actions-ecosystem/action-add-labels@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           labels: has-image-change
 
       - name: Remove "has-image-change" label if no diff
-        if: steps.diff.outputs.CHANGED == ''
+        if: steps.detect_changes.outputs.CHANGED == ''
         uses: actions-ecosystem/action-remove-labels@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
