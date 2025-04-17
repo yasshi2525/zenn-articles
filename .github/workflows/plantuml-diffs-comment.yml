@@ -1,0 +1,100 @@
+name: PlantUML Diagram Update Report
+
+on:
+  pull_request:
+    paths:
+      - "plantuml/**/*.puml"
+
+jobs:
+  comment-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Download PlantUML
+        run: |
+          mkdir -p lib
+          curl -Lo lib/plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
+
+      - name: Generate .png diagrams
+        run: |
+          mkdir -p images/generated
+          chmod +x generate-puml.sh
+          ./generate-puml.sh
+
+      - name: Detect changed diagrams
+        id: detect_changes
+        run: |
+          git diff --name-only origin/main HEAD -- images/generated/*.png > changed_files.txt
+          cat changed_files.txt
+          echo "CHANGED=$(cat changed_files.txt | paste -sd ',')" >> $GITHUB_OUTPUT
+
+      - name: Add "has-image-change" label if diff exists
+        if: steps.diff.outputs.CHANGED != ''
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: has-image-change
+
+      - name: Remove "has-image-change" label if no diff
+        if: steps.diff.outputs.CHANGED == ''
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: has-image-change
+
+      - name: Get PR number
+        id: pr
+        run: |
+          echo "PR_NUM=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+
+      - name: Download (before) images of main branch
+        run: |
+          mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before
+          for f in $(ls plantuml/generated/*.puml); do
+            name=$(basename $f .puml)
+            curl -f -s -o gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/$name.png \
+              https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/$name.png || echo "No previous image for $name"
+          done
+
+      - name: Copy current (after) images
+        run: |
+          mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after
+          cp images/generated/*.png gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./gh-pages
+          keep_files: true
+
+      - name: Post comment to PR
+        if: steps.detect_changes.outputs.CHANGED != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            🖼 **以下のPNG画像が更新されました:**
+            
+            ${{ steps.diff.outputs.CHANGED }}
+            
+            {% raw %}
+            {% for file in steps.diff.outputs.CHANGED.split(',') %}
+            ### `{{ file | split('/')[-1] }}`
+            - [Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/before/{{ file | split('/')[-1] }})
+            - [After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/after/{{ file | split('/')[-1] }})
+      
+            {% endfor %}
+            {% endraw %}
+            
+            📝 PR #${{ github.event.pull_request.number }} によって自動生成されました。

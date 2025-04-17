@@ -1,0 +1,41 @@
+name: Generate PlantUML Diagrams
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "plantuml/**/*.puml"
+
+jobs:
+  build-diagrams:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Download PlantUML
+        run: |
+          mkdir -p lib
+          curl -Lo lib/plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
+
+      - name: Generate .png diagrams
+        run: |
+          mkdir -p images/generated
+          chmod +x generate-puml.sh
+          ./generate-puml.sh
+
+      - name: Commit diagrams
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -f images/generated/*.png
+          git commit -m "CI: Generate PlantUML diagrams" || echo "No changes"
+          git push
