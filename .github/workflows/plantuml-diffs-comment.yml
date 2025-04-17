@@ -5,6 +5,10 @@ on:
     paths:
       - "plantuml/**/*.puml"
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   comment-diff:
     runs-on: ubuntu-latest
