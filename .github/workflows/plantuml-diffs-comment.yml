@@ -81,7 +81,7 @@ jobs:
               echo "No previous image for $relative_path" \
               && before_status_list+=("false")
           done < changed_files.txt
-          echo "BEFORE_STATUS_LIST=$(echo ${before_status_list[@]} | paste -sd ',')" >> $GITHUB_OUTPUT
+          echo "BEFORE_STATUS_LIST=$(IFS=','; echo "${before_status_list[*]}")" >> $GITHUB_OUTPUT
 
       - name: Copy current (after) images
         id: upload_after
@@ -97,7 +97,7 @@ jobs:
               after_status_list+=("false")
             fi
           done < changed_files.txt
-          echo "AFTER_STATUS_LIST=$(echo ${after_status_list[@]} | paste -sd ',')" >> $GITHUB_OUTPUT
+          echo "AFTER_STATUS_LIST=$(IFS=','; echo "${after_status_list[*]}")" >> $GITHUB_OUTPUT
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
