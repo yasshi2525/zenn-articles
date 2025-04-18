@@ -127,17 +127,17 @@ jobs:
             before_sentence="[Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ steps.pr.outputs.PR_NUM }}/before/${relative_path})"
             after_sentence="[After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ steps.pr.outputs.PR_NUM }}/after/${relative_path})"
           
-            if [[ "${before_status_list[$i]}" == "false" && "${after_status_list[$i]" == "true" ]]; then
+            if [[ "${before_status_list[$i]}" == "false" && "${after_status_list[$i]}" == "true" ]]; then
               file_status="created"
               status_icon="✅"
               table_body="| 🆕 | ➡ | ${after_sentence} |"
             fi
-            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]" == "true" ]]; then
+            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]}" == "true" ]]; then
               file_status="updated"
               status_icon="🔄"
               table_body="| ${before_sentence} | ➡ | ${after_sentence} |"
             fi
-            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]" == "false" ]]; then
+            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]}" == "false" ]]; then
               file_status="removed"
               status_icon="🗑️"
               table_body="| ${before_sentence} | ➡ | 🗑 |"
