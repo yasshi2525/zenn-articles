@@ -1,0 +1,161 @@
+name: PlantUML Diagram Update Report
+
+on:
+  pull_request:
+    paths:
+      - "plantuml/**/*.puml"
+
+permissions:
+  contents: write
+  pull-requests: write
+  pages: write
+
+jobs:
+  comment-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Download PlantUML
+        run: |
+          mkdir -p lib
+          curl -Lo lib/plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
+          sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Generate .png diagrams
+        run: |
+          mkdir -p images/generated
+          chmod +x generate-puml.sh
+          ./generate-puml.sh
+
+      - name: Detect changed diagrams
+        id: detect_changes
+        run: |
+          git add -f images/generated/*.png
+          git diff --cached --name-only origin/main -- images/generated/*.png > changed_files.txt
+          cat changed_files.txt
+          echo "CHANGED=$(cat changed_files.txt | paste -sd ',')" >> $GITHUB_OUTPUT
+
+      - name: Add "has-image-change" label if diff exists
+        if: steps.detect_changes.outputs.CHANGED != ''
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: has-image-change
+
+      - name: Remove "has-image-change" label if no diff
+        if: steps.detect_changes.outputs.CHANGED == ''
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: has-image-change
+
+      - name: Get PR number
+        id: pr
+        run: |
+          echo "PR_NUM=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+
+      - name: Download (before) images of main branch
+        id: download_before
+        run: |
+          mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before
+          before_status_list=()
+          
+          while IFS= read -r file; do
+            relative_path="${file#images/generated/}"
+            echo "Downloading... $relative_path"
+            mkdir -p $(dirname "$relative_path")
+            curl -f -s -o "gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/before/$relative_path" \
+              "https://raw.githubusercontent.com/${{ github.repository }}/main/images/generated/$relative_path" \
+              && before_status_list+=("true") \
+            || \
+              echo "No previous image for $relative_path" \
+              && before_status_list+=("false")
+          done < changed_files.txt
+          echo "BEFORE_STATUS_LIST=$(IFS=','; echo "${before_status_list[*]}")" >> $GITHUB_OUTPUT
+
+      - name: Copy current (after) images
+        id: upload_after
+        run: |
+          mkdir -p gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after
+          cp -r images/generated/* gh-pages/pr-${{ steps.pr.outputs.PR_NUM }}/after/
+          
+          after_status_list=()
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              after_status_list+=("true")
+            else
+              after_status_list+=("false")
+            fi
+          done < changed_files.txt
+          echo "AFTER_STATUS_LIST=$(IFS=','; echo "${after_status_list[*]}")" >> $GITHUB_OUTPUT
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./gh-pages
+          keep_files: true
+
+      - name: Generate image diff comment
+        id: comment
+        if: steps.detect_changes.outputs.CHANGED != ''
+        run: |
+          IFS=',' read -ra before_status_list <<< "${{ steps.download_before.outputs.BEFORE_STATUS_LIST }}"
+          IFS=',' read -ra after_status_list <<< "${{ steps.upload_after.outputs.AFTER_STATUS_LIST }}"
+          
+          echo "COMMENT<<EOF" >> $GITHUB_OUTPUT
+          echo "🖼 **画像の差分を検出しました**" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          
+          IFS=',' read -ra list <<< "${{ steps.detect_changes.outputs.CHANGED }}"
+          for ((i=0; i<${#list[@]}; i++)); do
+            relative_path="${list[$i]#images/generated/}"
+            file_status=""
+            status_icon=""
+            table_body=""
+            before_sentence="![Before](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ steps.pr.outputs.PR_NUM }}/before/${relative_path})"
+            after_sentence="![After](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ steps.pr.outputs.PR_NUM }}/after/${relative_path})"
+          
+            if [[ "${before_status_list[$i]}" == "false" && "${after_status_list[$i]}" == "true" ]]; then
+              file_status="created"
+              status_icon="✅"
+              table_body="| 🆕 | ➡ | ${after_sentence} |"
+            fi
+            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]}" == "true" ]]; then
+              file_status="updated"
+              status_icon="🔄"
+              table_body="| ${before_sentence} | ➡ | ${after_sentence} |"
+            fi
+            if [[ "${before_status_list[$i]}" == "true" && "${after_status_list[$i]}" == "false" ]]; then
+              file_status="removed"
+              status_icon="🗑️"
+              table_body="| ${before_sentence} | ➡ | 🗑 |"
+            fi
+            echo "### ${status_icon} \`${relative_path}\`" >> $GITHUB_OUTPUT
+            echo "| Before | ➡ | After |" >> $GITHUB_OUTPUT
+            echo "|--------|--------|--------|" >> $GITHUB_OUTPUT
+            echo "${table_body}" >> $GITHUB_OUTPUT
+            
+            echo "" >> $GITHUB_OUTPUT
+          done
+          
+          echo "PR #${{ github.event.pull_request.number }} によって自動生成されました。" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post comment to PR
+        if: steps.detect_changes.outputs.CHANGED != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: image-diff
+          message: "${{ steps.comment.outputs.COMMENT }}"

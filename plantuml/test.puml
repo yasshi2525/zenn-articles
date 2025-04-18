@@ -1,0 +1,25 @@
+@startuml
+
+[*] --> Inspect
+Inspect --> Build
+Build --> Inspect
+
+@enduml
+
+---
+
+@startuml
+
+[*] --> State1
+State1 --> [*]
+
+@enduml
+
+---
+
+@startuml
+
+[*] --> Foo
+Foo --> [*]
+
+@enduml
