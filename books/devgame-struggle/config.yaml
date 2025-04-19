@@ -12,6 +12,7 @@ topics:
 published: false
 price: 0
 chapters:
+  - index
   - prologue
   - introduction
   - diagram
