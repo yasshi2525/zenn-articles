@@ -13,4 +13,5 @@ published: false
 price: 0
 chapters:
   - prologue
+  - introduction
   - diagram
