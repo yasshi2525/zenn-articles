@@ -31,7 +31,7 @@ published: false
 ## Factorioのインストール・初回起動
 
 VPCのパブリックサブネットにEC2インスタンスを新規に作成。OSはAmazon Linux 2023を使用。
-S3へのアクセス権限を持つIAMロールを作成し、EC2インスタンスに付与した。
+S3へのアクセス権限と `CloudWatchAgentServerPolicy` を許可ポリシーに持つIAMロールを作成し、EC2インスタンスに付与した。
 
 ドメイン名で接続できるよう、Elastic IPを取得して自身が管理する独自ドメインのAレコードに設定している。
 
@@ -55,7 +55,7 @@ After=network.target
 [Service]
 ExecStart=factorio --start-server <セーブファイルのパス>
 # ログ監視用
-StandardOutput=file:/home/ec2-user/factoriod-output.txt
+StandardOutput=file:/var/log/factoriod-output.txt
 Type=simple
 User=ec2-user
 
@@ -180,4 +180,181 @@ Sat 2025-05-10 00:09:53 UTC 15h left Fri 2025-05-09 00:02:04 UTC 8h ago backup-f
 
 # ゲームへのログイン監視
 
+## 監視方法の検討
 
+Factorio headless serverではプレイヤーがゲームにログインすると、標準出力に下記のようなメッセージが出力される(`2.0.47`時点)。`******` はプレイヤーID。
+
+```
+2025-05-09 09:40:32 [JOIN] ****** joined the game
+```
+
+そこで、Factorioサーバーの標準出力を監視し、上記のようなパターンに合致するメッセージが出力されたら、手元に通知されるような仕組みを考えた。Factorioサーバーの標準出力を(監視が平易な)ファイルに出力させるようにし、Cloud Watch Agentにそのファイルを監視させた。ログはCloudWatch Logsに集約し、
+
+## CloudWatch Logsの監視設定
+
+CloudWatch Logsのロググループを作成する。
+
+ロググループにサブスクリプションフィルタを作成する。今回は少量のログデータの監視と簡易な通知処理のためLambdaサブスクリプションフィルターを作成した。
+
+### Lambda関数の作成
+
+関数の作成
+
+- [x] 一から作成
+- [ ] 設計図の使用
+- [ ] コンテナイメージ
+
+基本的な情報
+
+- 関数名: `NotifyFactorioLogin`
+- ランタイム: `Node.js 18.x`
+- アーキテクチャ: 
+  - [x] x86_64
+  - [ ] arm64
+
+環境変数 `targetUrl` には 取得した Discord の Webhook URL を指定している。 [取得方法の解説](https://discordjs.guide/popular-topics/webhooks.html#creating-webhooks-through-server-settings)
+
+```javascript
+import * as zlib from "node:zlib";
+
+/** 
+ * @param {{awslogs: {data: string}}} event
+ */
+export const handler = async (event) => {
+    /** @type string */
+    const data = zlib.gunzipSync(Buffer.from(event.awslogs.data, 'base64')).toString();
+    // console.log('awslogs.data', data);
+    /**
+     * @type {{
+     *   messageType: string,
+     *   owner: string, 
+     *   logGroup: string,
+     *   logStream: string, 
+     *   subscriptionFilters: string[],
+     *   logEvents: {
+     *     id: string,
+     *     timestamp: number,
+     *     message: string
+     *   }[]
+     * }}
+     */
+    const { logEvents } = JSON.parse(data)
+    const res = await fetch(process.env.targetUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            content: logEvents.map(e => `\`${e.message}\``).join('\n')
+        })
+    })
+    if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}, body: ${JSON.stringify(res.body())}`);
+    }
+};
+```
+
+サンプルイベントデータ
+```json
+{
+  "awslogs": {
+    "data": "H4sIAAAAAAAAA0VPUYuCQBB+v1+xzHOBpmVKHAhnUlA92FvIYuect4fuyu5aRPTfG70kmIdvvm++b2bu0KAxRYXHW4sQwVd8jPkuybI4TWAC6ipRE70aABflJ5G1qlKturbnCfOqb7gsGnypmdVYNKNshu7lNd3ZfGvRWqHkWtQWtYHoBD8DZH9KSCwZuSAfkpILSttP3EGUY+B/khV0uS0aOsMN/EUQOkHgh/5yMn5E4zNnNp86VCFz3cgLI89lp+1hs8+ZIWeNvDPvtfYXWUVfwCN/fDwBbUn1JxkBAAA="
+  }
+}
+```
+
+サンプル実行結果
+
+![](/images/operate_factorio_server_discord_screenshot.png)
+
+### Lambdaサブスクリプションフィルタの作成
+
+CloudWatch Logsのサブスクリプションフィルタを作成する。
+
+- Lambda関数: `NotifyFactorioLogin`
+- ログ形式とフィルターを設定
+  - ログの形式: `その他`
+  - サブスクリプションフィルタのパターン: `% \[JOIN\] \w* joined the game%`
+  - サブスクリプションフィルター名: `filter joined log`
+
+以下のデータでパターンをテストし、プレイヤーIDがログインしたメッセージを抽出できるか確認する。
+
+- パターンをテスト
+  - テストするログデータを選択: `カスタムログデータ`
+  - イベントメッセージをログ記録: `2025-05-09 09:40:32 [JOIN] sample_user joined the game`
+
+問題がなければストリーミングを開始する。
+
+## EC2インスタンスのログ監視設定
+
+EC2インスタンスにアタッチしているIAMロールの許可ポリシーに`CloudWatchAgentServerPolicy` を追加しておく必要がある
+
+EC2インスタンスに`cloudwatch-agent`をインストール。
+
+```shell
+sudo dnf install amazon-cloudwatch-agent 
+```
+
+CloudWatch Agent の設定ファイルを記述する。
+Factorioプロセスの標準出力が出力されたログファイル `/var/log/factoriod-output.txt` を収集する。なお、下記ファイルは`amazon-cloudwatch-agent-config-wizard` ([解説](https://docs.aws.amazon.com/ja_jp/AmazonCloudWatch/latest/monitoring/create-cloudwatch-agent-configuration-file-wizard.html))を使って作成した。
+
+`/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json`
+
+```json
+{
+  "agent": {
+    "run_as_user": "cwagent"
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/factoriod-output.txt",
+            "log_group_class": "STANDARD",
+            "log_group_name": "<ロググループ名>",
+            "log_stream_name": "{instance_id}",
+            "retention_in_days": 7
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+CloudWatch Agent を起動する。
+
+```shell
+sudo systemctl enable amazon-cloudwatch-agent
+sudo systemctl start amazon-cloudwatch-agent
+```
+
+CloudWatch Agent が起動したことを確認する。 `Active: active` となっていればOK。
+
+```shell
+sudo systemctl status amazon-cloudwatch-agent
+```
+
+出力例
+```
+● amazon-cloudwatch-agent.service - Amazon CloudWatch Agent
+     Loaded: loaded (/etc/systemd/system/amazon-cloudwatch-agent.service; enabled; preset: disabled)
+     Active: active (running) since Fri 2025-05-09 09:33:44 UTC; 2min 1s ago
+   Main PID: 33595 (amazon-cloudwat)
+      Tasks: 7 (limit: 1111)
+     Memory: 131.5M
+        CPU: 434ms
+     CGroup: /system.slice/amazon-cloudwatch-agent.service
+             └─33595 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent -config /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.toml -envconfig /opt/aws/amazon-cloudwatch-agent/etc/env-config.json -otelconfig /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.yaml -pidfile /opt/aws/amazon-cloudwatch-agent/var/amazon-cloudwatch-agent.pid
+
+May 09 09:33:44 ip-172-31-1-xxx.ap-northeast-1.compute.internal systemd[1]: Started amazon-cloudwatch-agent.service - Amazon CloudWatch Agent.
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: D! [EC2] Found active network interface
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: I! imds retry client will retry 1 timesI! Detected the instance is EC2
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: 2025/05/09 09:33:45 Reading json config file path: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json ...
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: 2025/05/09 09:33:45 I! Valid Json input schema.
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: I! Detecting run_as_user...
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: I! Trying to detect region from ec2
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: 2025/05/09 09:33:45 Configuration validation first phase succeeded
+May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33595]: I! Detecting run_as_user...
+```
