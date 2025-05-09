@@ -1,3 +1,11 @@
+---
+title: "Factorioサーバーを立てて日次バックアップとゲームログイン監視をしてみた"
+emoji: "👁️"
+type: "tech"
+topics: ["factorio", "aws", "s3", "cloudwatch", "discord"]
+published: false
+---
+
 # はじめに
 
 ## 本記事の目的
