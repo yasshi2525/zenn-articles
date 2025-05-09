@@ -97,12 +97,12 @@ May 09 03:40:32 ip-172-31-1-208.ap-northeast-1.compute.internal systemd[1]: Star
 
 # セーブデータのバックアップ
 
-Factorioはzipファイルがセーブデータなので、このファイルを毎日バックアップする。 バックアップは3日分保存するが、古いのは要らないので削除するうようにする。
-`aws-cli` を使って S3 にバックアップ。S3のライフサイクルルールを使って世代管理する
+Factorioはzipファイルがセーブデータなので、このファイルを毎日バックアップする。 バックアップは3日分保存するが、古いのは要らないので削除する。
+`aws-cli` を使って S3 にバックアップし、S3のライフサイクルルールを使って世代管理する。
 
 ## EC2インスタンスのバックアップ設定
 
-`cron` は Amazon Linux 2023 で非推奨になり、デフォルトで搭載されていない。推奨の `systemd timer` [^2]を使って日次実行する
+`cron` は Amazon Linux 2023 で非推奨になり、デフォルトで搭載されていない。推奨の `systemd timer` [^2]を使って日次実行するジョブを定義する。
 
 [^2]: https://docs.aws.amazon.com/ja_jp/linux/al2023/ug/deprecated-al2023.html#deprecated-cron
 
