@@ -92,7 +92,7 @@ sudo systemctl status factoriod
      CGroup: /system.slice/factoriod.service
              └─20465 /home/ec2-user/factorio/bin/x64/factorio --start-server /home/ec2-user/<ワールド名>.zip
 
-May 09 03:40:32 ip-172-31-1-208.ap-northeast-1.compute.internal systemd[1]: Started factoriod.service - Factorio Service.
+May 09 03:40:32 ip-172-31-1-xxx.ap-northeast-1.compute.internal systemd[1]: Started factoriod.service - Factorio Service.
 ```
 
 # セーブデータのバックアップ
