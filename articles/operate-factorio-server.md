@@ -36,7 +36,7 @@ S3へのアクセス権限を持つIAMロールを作成し、EC2インスタン
 ドメイン名で接続できるよう、Elastic IPを取得して自身が管理する独自ドメインのAレコードに設定している。
 
 FactorioはLinux用の[Headless, for servers](https://www.factorio.com/download)を使用し、事前にワールドデータを作成している[^1]。バージョンは `2.0.47`
-。Factorioのインストール方法は[公式wiki](https://wiki.factorio.com/Multiplayer#Setting_up_a_Linux_Factorio_server)を参照。
+。Factorioのインストール方法は[公式wiki](https://wiki.factorio.com/Multiplayer#Setting_up_a_Linux_Factorio_server)を参照。以下、実行ファイル `bin/x64/factorio` にPATHが通っているものとして解説する。
 
 [^1]: `factorio --create <ワールド名>`
 
@@ -53,7 +53,7 @@ Description=Factorio Service
 After=network.target
 
 [Service]
-ExecStart=/home/ec2-user/factorio/bin/x64/factorio --start-server /home/ec2-user/<ワールド名>.zip
+ExecStart=factorio --start-server <セーブファイルのパス>
 # ログ監視用
 StandardOutput=file:/home/ec2-user/factoriod-output.txt
 Type=simple
@@ -115,7 +115,7 @@ Description=Back up daily Factorio save data
 [Service]
 Type=oneshot
 User=ec2-user
-ExecStart=aws s3 cp /home/ec2-user/<ワールド名>.zip s3://<バケット名>
+ExecStart=aws s3 cp <セーブファイルのパス> s3://<バケット名>
 
 [Install]
 WantedBy=multi-user.target
