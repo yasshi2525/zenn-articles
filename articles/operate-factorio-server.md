@@ -215,38 +215,43 @@ CloudWatch Logsのロググループを作成する。
 環境変数 `targetUrl` には 取得した Discord の Webhook URL を指定している。 [取得方法の解説](https://discordjs.guide/popular-topics/webhooks.html#creating-webhooks-through-server-settings)
 
 ```javascript
-import * as zlib from "node:zlib";
+import * as zlib from 'node:zlib';
 
-/** 
- * @param {{awslogs: {data: string}}} event
+/**
+ * CloudWatch LogsがLambdaに渡すイベントデータの形式
+ * @typedef {Object} CloudWatchLogsEvent
+ * @property {string} messageType メッセージタイプ。DATA_MESSAGE固定
+ * @property {string} owner ログデータを発行した AWS アカウント ID。
+ * @property {string} logGroup ロググループ名
+ * @property {string} logStream ログストリーミング名
+ * @property {string[]} subscriptionFilters 適用されているサブスクリプションフィルタのリスト
+ * @property {LogEvent[]} logEvents ログデータ本体
+ */
+
+/**
+ * ログイベント。1つのログイベントを表す。
+ * @typedef {Object} LogEvent
+ * @property {string} id ログを一意に指すID
+ * @property {number} timestamp ログの発生時刻。UNIX時間。
+ * @property {string} message メッセージ本文
+ */
+
+/**
+ * @param {string} event.awslogs.data データ本文をzip形式で圧縮し、更にbase64でエンコードした値
  */
 export const handler = async (event) => {
-    /** @type string */
-    const data = zlib.gunzipSync(Buffer.from(event.awslogs.data, 'base64')).toString();
-    // console.log('awslogs.data', data);
-    /**
-     * @type {{
-     *   messageType: string,
-     *   owner: string, 
-     *   logGroup: string,
-     *   logStream: string, 
-     *   subscriptionFilters: string[],
-     *   logEvents: {
-     *     id: string,
-     *     timestamp: number,
-     *     message: string
-     *   }[]
-     * }}
-     */
-    const { logEvents } = JSON.parse(data)
+    // CloudWatchから渡されたイベントデータの取得
+    /** @type {CloudWatchLogsEvent} */
+    const data = JSON.parse(zlib.gunzipSync(Buffer.from(event.awslogs.data, 'base64')).toString());
+
+    // Discordに通知するメッセージを作成
+    const content = data.logEvents.map(e => `\`${e.message}\``).join('\n')
+
+    // DiscordのWebhookにPOST
     const res = await fetch(process.env.targetUrl, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            content: logEvents.map(e => `\`${e.message}\``).join('\n')
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
     })
     if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}, body: ${JSON.stringify(res.body())}`);
