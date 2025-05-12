@@ -363,3 +363,12 @@ May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-clo
 May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: 2025/05/09 09:33:45 Configuration validation first phase succeeded
 May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33595]: I! Detecting run_as_user...
 ```
+
+# まとめ
+
+友達とFactorioを遊びたい。という動機からAWSのEC2インスタンスを立てました。
+Factorioはフォアグラウンドアプリケーションだったので、自分が接続していないときでも常時遊べるよう、まずはFactorioをsystemdでデーモン化しました。
+次に、セーブデータがもし消えるととても悲しいことになるので、S3にバックアップをとるようにしました。古いバックアップは要らないのでライフサイクルルールで自動で削除されるようにしました。
+最後に、友達がログインしたことに気がつけるようにしました。Factorioは誰かがログインすると標準出力にメッセージを出すので、これをどうにかして気がつけないか考えました。まずは監視が平易になるようsystemdの機能を使ってファイルとして出力させました。次にCloudWatch Agentを使ってそのファイルの更新内容をつねにCloudWatch Logsに送るようにしました。そしてCloudWatch Logsのサブスクリプションフィルタを使って、ログインに該当するメッセージがあったか判定し、Lambda関数を実行するようにしました。Lambda関数の中でDiscordのWebhookのURLを呼び出すようにしたことで、友達がログインしたことを自身のDiscordサーバーに通知するようにしました。
+
+このように「何かしたい→どう実現するか→今度はこうしたい」というサイクルを繰り返すことで、友達と楽しく遊ぶという最終目標を短期間で実現できました。クラウドサービスは便利で色々なことができますが、全部覚えようとするよりも、やりたいことの実現手段として使ってみることが、使いこなすコツだと思います。今回の私の実現手順が、クラウドサービスをどう活用しようか考える一助になれば幸いです。
