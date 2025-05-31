@@ -363,8 +363,7 @@ Factorioプロセスの標準出力が出力されたログファイル `/var/lo
             "file_path": "/var/log/factoriod-output.txt",
             "log_group_class": "STANDARD",
             "log_group_name": "<ロググループ名>",
-            "log_stream_name": "{instance_id}",
-            "retention_in_days": 7
+            "log_stream_name": "{instance_id}"
           }
         ]
       }
