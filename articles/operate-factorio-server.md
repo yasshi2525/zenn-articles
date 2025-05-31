@@ -11,11 +11,12 @@ published: false
 ## 本記事の目的
 
 友人と遊ぶ用のFactorioサーバーをAWS上に立てた。遊びの経験を損ねないようバックアップやログイン監視を頑張ったので、そのときの設定を共有する。
+また、やりたいことをブレークダウンしてクラウドサービスを活用していく過程を示すことで、クラウドサービスを使いこなすためのヒントが提供できればとも思っている。
 
 ## やりたかったこと(Why)とやったこと(How)
 
 * 自分が遊んでないときでも友達がいつでもログインして遊べるようにしたかったので、スタンドアロンアプリケーションであるFactorio (Headless Server) をバッググラウンド実行するようにした。
-* 誤ってサーバーを消しちゃったとか誰かに荒らされた、なんてことに備えてセーブデータを日次でS3に3世代分バックアップするようにした。
+* 誤ってサーバーを消してしまったとか誰かに荒らされた、なんてことに備えてセーブデータを日次でS3に3世代分バックアップするようにした。
 * 友達とLINE等で落ち合わせなくてすむよう、友達がログインしたら自分のDiscordサーバーに通知が来るようにした。
 
 ## 想定読者
@@ -31,7 +32,6 @@ published: false
 ## Factorioのインストール・初回起動
 
 VPCのパブリックサブネットにEC2インスタンスを新規に作成。OSはAmazon Linux 2023を使用。
-S3へのアクセス権限と `CloudWatchAgentServerPolicy` を許可ポリシーに持つIAMロールを作成し、EC2インスタンスに付与した。
 
 ドメイン名で接続できるよう、Elastic IPを取得して自身が管理する独自ドメインのAレコードに設定している。
 
@@ -54,8 +54,6 @@ After=network.target
 
 [Service]
 ExecStart=factorio --start-server <セーブファイルのパス>
-# ログ監視用
-StandardOutput=file:/var/log/factoriod-output.txt
 Type=simple
 User=ec2-user
 
@@ -103,6 +101,7 @@ Factorioはzipファイルがセーブデータなので、このファイルを
 ## EC2インスタンスのバックアップ設定
 
 `cron` は Amazon Linux 2023 で非推奨になり、デフォルトで搭載されていない。推奨の `systemd timer` [^2]を使って日次実行するジョブを定義する。
+また、上記にも記載した通りS3への書き込み権限を持つIAMロールを作成して、EC2インスタンスに付与する。
 
 [^2]: https://docs.aws.amazon.com/ja_jp/linux/al2023/ug/deprecated-al2023.html#deprecated-cron
 
@@ -188,13 +187,22 @@ Factorio headless serverではプレイヤーがゲームにログインする�
 2025-05-09 09:40:32 [JOIN] ****** joined the game
 ```
 
-そこで、Factorioサーバーの標準出力を監視し、上記のようなパターンに合致するメッセージが出力されたら、手元に通知されるような仕組みを考えた。Factorioサーバーの標準出力を(監視が平易な)ファイルに出力させるようにし、Cloud Watch Agentにそのファイルを監視させた。ログはCloudWatch Logsに集約し、
+そこで、Factorioサーバーの標準出力を監視し、上記のようなパターンに合致するメッセージが出力されたら、手元に通知されるような仕組みを考えた。
+
+まず、Factorioサーバーの標準出力を(監視が平易な)ファイルに出力させるようにし、Cloud Watch Agentにそのファイルを監視させる。
+次に、ログはCloudWatch Logsに集約し、ログインメッセージが検出されたときに通知処理を定義したLambda関数を実行する。Lambda関数ではDiscordのWebhookを呼び出して、ログインしたことをDiscordサーバーに通知する。
+
+## 完成形のアーキテクチャ図
+
+上記の監視方法を図にまとめた。Factorioサーバーの標準出力に出力されたログメッセージがどのような経路でDiscordに通知されるかを示している。
+
+![](/images/factorio-server-login-notification-architecture.drawio.png)
 
 ## CloudWatch Logsの監視設定
 
-CloudWatch Logsのロググループを作成する。
+CloudWatch Logsを使って、EC2インスタンスから受け取ったログデータからプレイヤーのログインメッセージを抽出する。ログイン判定がなされたとき、Discordに通知するLambda関数を実行するようにする。
 
-ロググループにサブスクリプションフィルタを作成する。今回は少量のログデータの監視と簡易な通知処理のためLambdaサブスクリプションフィルターを作成した。
+具体的にはCloudWatch Logsのロググループを作成して、ロググループにサブスクリプションフィルタを作成する。今回は少量のログデータの監視と簡易な通知処理のためLambdaサブスクリプションフィルターを作成した。
 
 ### Lambda関数の作成
 
@@ -268,6 +276,27 @@ export const handler = async (event) => {
 }
 ```
 
+(参考) 上記の `awslogs.data` のエンコード前の値は下記。base64でデコードし、unzipすると以下のようなテキストに変換される。
+
+```json
+{
+  "messageType": "DATA_MESSAGE",
+  "owner": "<owner_id>",
+  "logGroup": "<log_group_name>",
+  "logStream": "<log_stream_id>",
+  "subscriptionFilters": [
+    "filter joined log"
+  ],
+  "logEvents": [
+    {
+      "id": "<log_id>",
+      "timestamp": 1746790774948,
+      "message": "2025-05-09 11:39:31 [JOIN] sample_user joined the game"
+    }
+  ]
+}
+```
+
 サンプル実行結果
 
 ![](/images/operate_factorio_server_discord_screenshot.png)
@@ -291,6 +320,22 @@ CloudWatch Logsのサブスクリプションフィルタを作成する。
 問題がなければストリーミングを開始する。
 
 ## EC2インスタンスのログ監視設定
+
+今度はログインメッセージを含むログ情報を監視して、CloudWatch Logsに送信するよう設定する。
+
+### 標準出力のファイル出力
+
+今回、監視したい対象はFactorioサーバーの標準出力なので、まず一般に監視しやすい形式であるファイルとして出力されるようにする。
+
+`/etc/systemd/system/factoriod.service`
+
+```
+[Service]
+# 下記を追加
+StandardOutput=append:/var/log/factoriod-output.txt
+```
+
+### CloudWatch Agentによるログ収集
 
 EC2インスタンスにアタッチしているIAMロールの許可ポリシーに`CloudWatchAgentServerPolicy` を追加しておく必要がある
 
@@ -318,8 +363,7 @@ Factorioプロセスの標準出力が出力されたログファイル `/var/lo
             "file_path": "/var/log/factoriod-output.txt",
             "log_group_class": "STANDARD",
             "log_group_name": "<ロググループ名>",
-            "log_stream_name": "{instance_id}",
-            "retention_in_days": 7
+            "log_stream_name": "{instance_id}"
           }
         ]
       }
@@ -363,3 +407,14 @@ May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-clo
 May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33599]: 2025/05/09 09:33:45 Configuration validation first phase succeeded
 May 09 09:33:45 ip-172-31-1-xxx.ap-northeast-1.compute.internal start-amazon-cloudwatch-agent[33595]: I! Detecting run_as_user...
 ```
+
+# まとめ
+
+友達とFactorioを遊びたい。という動機からAWSのEC2インスタンスを立てた。
+Factorioはフォアグラウンドアプリケーションだったので、自分が接続していないときでも常時遊べるよう、まずはFactorioをsystemdでデーモン化した。
+次に、セーブデータがもし消えるととても悲しいことになるので、S3にバックアップをとるようにした。古いバックアップは要らないのでライフサイクルルールで自動で削除されるようにした。
+最後に、友達がログインしたことに気がつけるよう次のように考えた。Factorioは誰かがログインすると標準出力にメッセージを出すので、これをどうにかして気がつけないか考えた。まずは監視が平易になるようsystemdの機能を使ってファイルとして出力させた。次にCloudWatch Agentを使ってそのファイルの更新内容をつねにCloudWatch Logsに送るようにした。そしてCloudWatch Logsのサブスクリプションフィルタを使って、ログインに該当するメッセージがあったか判定し、Lambda関数を実行するようにした。Lambda関数の中でDiscordのWebhookのURLを呼び出すようにしたことで、友達がログインしたことを自身のDiscordサーバーに通知するようにした。
+
+## おわりに
+
+「何かしたい→どう実現するか→今度はこうしたい」というサイクルを繰り返すことで、友達と楽しく遊ぶという最終目標を短期間で実現できました。クラウドサービスは便利で色々なことができますが、全部覚えようとするよりも、やりたいことの実現手段として使ってみることが、使いこなすコツだと思います。今回の私の実現手順が、クラウドサービスをどう活用しようか考える一助になれば幸いです。
