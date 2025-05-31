@@ -11,6 +11,6 @@
   "author": "yasshi2525",
   "license": "CC-BY-4.0",
   "dependencies": {
-    "zenn-cli": "^0.1.158"
+    "zenn-cli": "^0.1.161"
   }
 }
