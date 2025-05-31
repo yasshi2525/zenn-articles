@@ -54,8 +54,6 @@ After=network.target
 
 [Service]
 ExecStart=factorio --start-server <セーブファイルのパス>
-# ログ監視用
-StandardOutput=file:/var/log/factoriod-output.txt
 Type=simple
 User=ec2-user
 
@@ -292,6 +290,22 @@ CloudWatch Logsのサブスクリプションフィルタを作成する。
 問題がなければストリーミングを開始する。
 
 ## EC2インスタンスのログ監視設定
+
+今度はログインメッセージを含むログ情報を監視して、CloudWatch Logsに送信するよう設定する。
+
+### 標準出力のファイル出力
+
+今回、監視したい対象はFactorioサーバーの標準出力なので、まず一般に監視しやすい形式であるファイルとして出力されるようにする。
+
+`/etc/systemd/system/factoriod.service`
+
+```
+[Service]
+# 下記を追加
+StandardOutput=append:/var/log/factoriod-output.txt
+```
+
+### CloudWatch Agentによるログ収集
 
 EC2インスタンスにアタッチしているIAMロールの許可ポリシーに`CloudWatchAgentServerPolicy` を追加しておく必要がある
 
