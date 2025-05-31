@@ -3,7 +3,7 @@ title: "Factorioサーバーを立てて日次バックアップとゲームロ�
 emoji: "👁️"
 type: "tech"
 topics: ["factorio", "aws", "s3", "cloudwatch", "discord"]
-published: false
+published: true
 ---
 
 # はじめに
