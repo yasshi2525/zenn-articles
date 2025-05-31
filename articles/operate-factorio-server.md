@@ -276,6 +276,27 @@ export const handler = async (event) => {
 }
 ```
 
+(参考) 上記の `awslogs.data` のエンコード前の値は下記。base64でデコードし、unzipすると以下のようなテキストに変換される。
+
+```json
+{
+  "messageType": "DATA_MESSAGE",
+  "owner": "<owner_id>",
+  "logGroup": "<log_group_name>",
+  "logStream": "<log_stream_id>",
+  "subscriptionFilters": [
+    "filter joined log"
+  ],
+  "logEvents": [
+    {
+      "id": "<log_id>",
+      "timestamp": 1746790774948,
+      "message": "2025-05-09 11:39:31 [JOIN] sample_user joined the game"
+    }
+  ]
+}
+```
+
 サンプル実行結果
 
 ![](/images/operate_factorio_server_discord_screenshot.png)
