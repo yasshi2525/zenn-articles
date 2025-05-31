@@ -187,13 +187,22 @@ Factorio headless serverではプレイヤーがゲームにログインする�
 2025-05-09 09:40:32 [JOIN] ****** joined the game
 ```
 
-そこで、Factorioサーバーの標準出力を監視し、上記のようなパターンに合致するメッセージが出力されたら、手元に通知されるような仕組みを考えた。Factorioサーバーの標準出力を(監視が平易な)ファイルに出力させるようにし、Cloud Watch Agentにそのファイルを監視させた。ログはCloudWatch Logsに集約し、
+そこで、Factorioサーバーの標準出力を監視し、上記のようなパターンに合致するメッセージが出力されたら、手元に通知されるような仕組みを考えた。
+
+まず、Factorioサーバーの標準出力を(監視が平易な)ファイルに出力させるようにし、Cloud Watch Agentにそのファイルを監視させる。
+次に、ログはCloudWatch Logsに集約し、ログインメッセージが検出されたときに通知処理を定義したLambda関数を実行する。Lambda関数ではDiscordのWebhookを呼び出して、ログインしたことをDiscordサーバーに通知する。
+
+## 完成形のアーキテクチャ図
+
+上記の監視方法を図にまとめた。Factorioサーバーの標準出力に出力されたログメッセージがどのような経路でDiscordに通知されるかを示している。
+
+![](/images/factorio-server-login-notification-architecture.drawio.png)
 
 ## CloudWatch Logsの監視設定
 
-CloudWatch Logsのロググループを作成する。
+CloudWatch Logsを使って、EC2インスタンスから受け取ったログデータからプレイヤーのログインメッセージを抽出する。ログイン判定がなされたとき、Discordに通知するLambda関数を実行するようにする。
 
-ロググループにサブスクリプションフィルタを作成する。今回は少量のログデータの監視と簡易な通知処理のためLambdaサブスクリプションフィルターを作成した。
+具体的にはCloudWatch Logsのロググループを作成して、ロググループにサブスクリプションフィルタを作成する。今回は少量のログデータの監視と簡易な通知処理のためLambdaサブスクリプションフィルターを作成した。
 
 ### Lambda関数の作成
 
