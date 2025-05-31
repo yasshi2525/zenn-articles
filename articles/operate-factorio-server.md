@@ -32,7 +32,6 @@ published: false
 ## Factorioのインストール・初回起動
 
 VPCのパブリックサブネットにEC2インスタンスを新規に作成。OSはAmazon Linux 2023を使用。
-S3へのアクセス権限と `CloudWatchAgentServerPolicy` を許可ポリシーに持つIAMロールを作成し、EC2インスタンスに付与した。
 
 ドメイン名で接続できるよう、Elastic IPを取得して自身が管理する独自ドメインのAレコードに設定している。
 
@@ -104,6 +103,7 @@ Factorioはzipファイルがセーブデータなので、このファイルを
 ## EC2インスタンスのバックアップ設定
 
 `cron` は Amazon Linux 2023 で非推奨になり、デフォルトで搭載されていない。推奨の `systemd timer` [^2]を使って日次実行するジョブを定義する。
+また、上記にも記載した通りS3への書き込み権限を持つIAMロールを作成して、EC2インスタンスに付与する。
 
 [^2]: https://docs.aws.amazon.com/ja_jp/linux/al2023/ug/deprecated-al2023.html#deprecated-cron
 
